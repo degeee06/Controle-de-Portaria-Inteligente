@@ -1,0 +1,5 @@
+{
+  "name": "Controle de Portaria Inteligente",
+  "description": "Um aplicativo moderno para porteiros gerenciarem a entrada e saída de veículos de forma rápida e intuitiva, com relatórios gerados por IA.",
+  "requestFramePermissions": []
+}
