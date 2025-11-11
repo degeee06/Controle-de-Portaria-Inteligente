@@ -1,46 +1,33 @@
-const CACHE_NAME = 'gate-control-cache-v4'; // Versão incrementada para forçar a atualização
-// Apenas os arquivos locais essenciais são pré-cacheados.
-// Dependências de CDN serão cacheadas dinamicamente pelo evento 'fetch'.
+const CACHE_NAME = 'gate-control-cache-v5'; // Versão incrementada para forçar a atualização
+const APP_SHELL_FALLBACK = '/index.html';
+
+// Lista de arquivos essenciais da "casca" do aplicativo.
+// Estes são os arquivos mínimos necessários para a aplicação carregar.
 const urlsToCache = [
     '/',
-    '/index.html',
+    APP_SHELL_FALLBACK,
     '/vite.svg',
     '/index.tsx',
     '/App.tsx',
     '/types.ts',
     '/hooks/useVehicleLog.ts',
-    '/services/geminiService.ts',
     '/services/offlineStorageService.ts',
+    // Adicionando os componentes mais críticos para a UI inicial
     '/components/MovementModal.tsx',
     '/components/RegistrationModal.tsx',
-    '/components/ReportModal.tsx',
     '/components/HistoryView.tsx',
     '/components/HistoryCard.tsx',
     '/components/ConfirmationModal.tsx',
     '/components/DriverModal.tsx',
-    '/components/icons/CarIcon.tsx',
+    // Adicionando ícones usados na tela principal
     '/components/icons/PlusIcon.tsx',
-    '/components/icons/ArrowRightOnRectangleIcon.tsx',
-    '/components/icons/ArrowLeftOnRectangleIcon.tsx',
-    '/components/icons/DocumentTextIcon.tsx',
-    '/components/icons/XMarkIcon.tsx',
-    '/components/icons/ArrowUturnLeftIcon.tsx',
     '/components/icons/ArrowDownTrayIcon.tsx',
     '/components/icons/ArrowUpTrayIcon.tsx',
-    '/components/icons/TrashIcon.tsx',
-    '/components/icons/ExclamationTriangleIcon.tsx',
-    '/components/icons/DocumentArrowDownIcon.tsx',
-    '/components/icons/MagnifyingGlassIcon.tsx',
     '/components/icons/UsersIcon.tsx',
-    '/components/icons/UserPlusIcon.tsx',
-    '/components/icons/CheckCircleIcon.tsx',
-    '/components/ArrivalModal.tsx',
-    '/components/ManualLogModal.tsx',
-    '/components/VehicleCard.tsx',
-    '/components/LogModal.tsx',
-    '/components/icons/ClipboardDocumentCheckIcon.tsx',
-    '/components/icons/UserIcon.tsx',
-    '/services/supabaseService.ts'
+    '/components/icons/ArrowLeftOnRectangleIcon.tsx',
+    '/components/icons/ArrowRightOnRectangleIcon.tsx',
+    '/components/icons/MagnifyingGlassIcon.tsx',
+    '/components/icons/TrashIcon.tsx'
 ];
 
 self.addEventListener('install', (event) => {
@@ -48,7 +35,6 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching app shell');
-        // Apenas os arquivos locais são cacheados, tornando a instalação mais robusta.
         return cache.addAll(urlsToCache);
       })
       .then(() => self.skipWaiting())
@@ -100,11 +86,15 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse;
           }
-        ).catch(error => {
-          // Em caso de falha na rede (offline), o erro será propagado
-          // e o navegador mostrará a página de erro padrão.
-          console.error('Service Worker: fetch failed with error:', error);
-          throw error;
+        ).catch(() => {
+            // **A MUDANÇA CRÍTICA:** Se a rede falhar, verifica se é uma navegação de página.
+            // Se for, retorna o index.html do cache (o "app shell").
+            if (event.request.mode === 'navigate') {
+                console.log('Fetch failed, returning offline fallback page.');
+                return caches.match(APP_SHELL_FALLBACK);
+            }
+            // Para outros tipos de requisição que falharem (ex: imagens não cacheadas, API),
+            // a falha é simplesmente propagada, o que é o comportamento esperado.
         });
       })
   );
