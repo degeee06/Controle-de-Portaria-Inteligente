@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gate-control-cache-v2'; // Bump version
+const CACHE_NAME = 'gate-control-cache-v3'; // Bump version
 const urlsToCache = [
     '/',
     '/index.html',
@@ -33,6 +33,10 @@ const urlsToCache = [
     '/components/icons/UserPlusIcon.tsx',
     '/components/icons/CheckCircleIcon.tsx',
     'https://cdn.tailwindcss.com',
+    // Add external CDN dependencies to the cache
+    'https://aistudiocdn.com/react@^19.2.0',
+    'https://aistudiocdn.com/react-dom@^19.2.0',
+    'https://aistudiocdn.com/@google/genai@^1.27.0'
 ];
 
 self.addEventListener('install', (event) => {
@@ -40,9 +44,14 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching app shell');
-        return cache.addAll(urlsToCache);
+        // Use addAll with a request object to handle potential redirect issues with CDNs
+        const requests = urlsToCache.map(url => new Request(url, { mode: 'no-cors' }));
+        return cache.addAll(requests);
       })
       .then(() => self.skipWaiting())
+      .catch(err => {
+        console.error('Service Worker: Failed to cache urls:', err);
+      })
   );
 });
 
@@ -62,35 +71,32 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') {
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-
-        return fetch(event.request).then(
-          (networkResponse) => {
-            if (!networkResponse || !networkResponse.ok) {
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(event.request)
+        .then((cachedResponse) => {
+          const fetchPromise = fetch(event.request).then(
+            (networkResponse) => {
+              // We only cache successful responses
+              if (networkResponse && networkResponse.ok) {
+                cache.put(event.request, networkResponse.clone());
+              }
               return networkResponse;
             }
+          ).catch(error => {
+            console.error('Service Worker: fetch failed with error:', error);
+            // On fetch error, you might want to return a fallback page if you have one
+            // for now, we just let the error propagate
+            throw error;
+          });
 
-            const responseToCache = networkResponse.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return networkResponse;
-          }
-        ).catch(error => {
-          console.error('Service Worker: fetch failed with error:', error);
+          // Return cached response immediately if available, and update cache in background
+          return cachedResponse || fetchPromise;
         });
-      })
+    })
   );
 });
