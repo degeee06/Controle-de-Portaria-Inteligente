@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import type { Vehicle, Driver, Movement, VehicleStatus, MovementType, CompletedMovementData } from '../types';
 
 // --- Helper functions for localStorage ---
@@ -211,7 +214,7 @@ export const deleteMovement = (movementId: string): void => {
 
 
 // --- Backup and Restore Functions ---
-export const exportAllData = () => {
+export const exportAllData = async () => {
     const dataToExport = {
         vehicles: getVehicles(),
         drivers: getDrivers(),
@@ -219,15 +222,42 @@ export const exportAllData = () => {
         commonDestinations: getCommonDestinations(),
     };
     const jsonString = JSON.stringify(dataToExport, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `backup_controle_portaria_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const fileName = `backup_controle_portaria_${new Date().toISOString().split('T')[0]}.json`;
+
+    if (Capacitor.isNativePlatform()) {
+        try {
+            // Write the file to a temporary directory
+            const { uri } = await Filesystem.writeFile({
+                path: fileName,
+                data: jsonString,
+                directory: Directory.Cache,
+                encoding: Encoding.UTF8,
+            });
+
+            // Use the Share plugin to open the native sharing dialog
+            await Share.share({
+                title: 'Backup Controle de Portaria',
+                text: `Backup do dia ${new Date().toLocaleDateString('pt-BR')}. Salve este arquivo em um local seguro.`,
+                url: uri,
+                dialogTitle: 'Salvar Backup',
+            });
+        } catch(error) {
+            console.error("Capacitor share failed:", error);
+            // Fallback to alert if sharing fails
+            alert(`Não foi possível usar o compartilhamento nativo. Erro: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    } else {
+        // Fallback for standard web browsers
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
 };
 
 export const importAllData = (jsonString: string) => {
