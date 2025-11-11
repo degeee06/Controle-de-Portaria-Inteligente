@@ -1,4 +1,6 @@
-const CACHE_NAME = 'gate-control-cache-v3'; // Bump version
+const CACHE_NAME = 'gate-control-cache-v4'; // Versão incrementada para forçar a atualização
+// Apenas os arquivos locais essenciais são pré-cacheados.
+// Dependências de CDN serão cacheadas dinamicamente pelo evento 'fetch'.
 const urlsToCache = [
     '/',
     '/index.html',
@@ -32,11 +34,13 @@ const urlsToCache = [
     '/components/icons/UsersIcon.tsx',
     '/components/icons/UserPlusIcon.tsx',
     '/components/icons/CheckCircleIcon.tsx',
-    'https://cdn.tailwindcss.com',
-    // Add external CDN dependencies to the cache
-    'https://aistudiocdn.com/react@^19.2.0',
-    'https://aistudiocdn.com/react-dom@^19.2.0',
-    'https://aistudiocdn.com/@google/genai@^1.27.0'
+    '/components/ArrivalModal.tsx',
+    '/components/ManualLogModal.tsx',
+    '/components/VehicleCard.tsx',
+    '/components/LogModal.tsx',
+    '/components/icons/ClipboardDocumentCheckIcon.tsx',
+    '/components/icons/UserIcon.tsx',
+    '/services/supabaseService.ts'
 ];
 
 self.addEventListener('install', (event) => {
@@ -44,13 +48,12 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching app shell');
-        // Use addAll with a request object to handle potential redirect issues with CDNs
-        const requests = urlsToCache.map(url => new Request(url, { mode: 'no-cors' }));
-        return cache.addAll(requests);
+        // Apenas os arquivos locais são cacheados, tornando a instalação mais robusta.
+        return cache.addAll(urlsToCache);
       })
       .then(() => self.skipWaiting())
       .catch(err => {
-        console.error('Service Worker: Failed to cache urls:', err);
+        console.error('Service Worker: Failed to cache app shell:', err);
       })
   );
 });
@@ -71,32 +74,38 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Ignora requisições que não sejam GET e não sejam para recursos web (http/https)
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
     return;
   }
 
   event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(event.request)
-        .then((cachedResponse) => {
-          const fetchPromise = fetch(event.request).then(
-            (networkResponse) => {
-              // We only cache successful responses
-              if (networkResponse && networkResponse.ok) {
-                cache.put(event.request, networkResponse.clone());
-              }
-              return networkResponse;
-            }
-          ).catch(error => {
-            console.error('Service Worker: fetch failed with error:', error);
-            // On fetch error, you might want to return a fallback page if you have one
-            // for now, we just let the error propagate
-            throw error;
-          });
+    caches.match(event.request)
+      .then((cachedResponse) => {
+        // Se o recurso já estiver no cache, retorna ele imediatamente.
+        if (cachedResponse) {
+          return cachedResponse;
+        }
 
-          // Return cached response immediately if available, and update cache in background
-          return cachedResponse || fetchPromise;
+        // Se não estiver no cache, busca na rede.
+        return fetch(event.request).then(
+          (networkResponse) => {
+            // Se a resposta da rede for válida, clona, armazena no cache e retorna.
+            if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(event.request, responseToCache);
+                });
+            }
+            return networkResponse;
+          }
+        ).catch(error => {
+          // Em caso de falha na rede (offline), o erro será propagado
+          // e o navegador mostrará a página de erro padrão.
+          console.error('Service Worker: fetch failed with error:', error);
+          throw error;
         });
-    })
+      })
   );
 });
